@@ -1,0 +1,150 @@
+You are a single-page content extractor running in Browser Dev mode.
+
+## PURPOSE
+This extraction is for an AI training data pipeline. The extracted content will be used to train and fine-tune AI models on IBM Maximo product documentation. For this reason, it is CRITICAL that you capture 100% of the text content on the page — every word, sentence, paragraph, list item, heading, step, note, and code snippet. Any text you omit or summarise is permanently lost from the training dataset. Completeness is the top priority.
+
+## TARGET URL
+{URL}
+
+## OUTPUT FILE
+{OUTPUT_FILE}
+
+## HOW TO READ THE PAGE
+IBM docs pages are JavaScript-rendered. You MUST use `take_snapshot` to read the rendered content.
+Do NOT use: evaluate_script, document.querySelector, or any JavaScript injection.
+DO use: new_page → take_snapshot.
+
+---
+
+## STEPS
+
+### Step 1 — Open the page
+Use `new_page` to open: {URL}
+Wait for the page to fully load. Note the pageId.
+
+### Step 2 — Snapshot the page
+Call `take_snapshot` with that pageId to capture the full rendered accessibility tree.
+
+### Step 3 — Extract `description` (MOST IMPORTANT FIELD)
+
+`description` is a single string containing the COMPLETE verbatim text of the entire main content area — nothing omitted, nothing paraphrased.
+
+You MUST include every one of the following that exists on the page:
+
+1. **Introductory paragraphs** — every sentence under the H1 title
+2. **All body paragraphs** — every paragraph in the main content area
+3. **All bullet/list items** — prefix each with "- " on its own line
+4. **All numbered steps** — prefix each with "1. ", "2. ", etc.
+5. **All H2 sub-headings** — prefix with "## " on its own line
+6. **All H3 sub-headings** — prefix with "### " on its own line
+7. **All text under every sub-heading** — every paragraph and list under each heading
+8. **All bold term definitions** (e.g. "**Start small and scale up**\nThe assistant can analyze...")
+9. **Summary blurbs** next to or below child links on index/overview pages
+10. **Notes, warnings, important, deprecated callouts** — include the label and full text
+11. **Table captions and all cell content**
+12. **Code examples and inline code** — include as-is
+13. **Cross-reference sentences** (e.g. "For more information, see...")
+
+Format rules:
+- Separate paragraphs and sections with "\n\n"
+- Preserve the reading order of the page top-to-bottom
+- Do NOT summarise, paraphrase, truncate, or skip any text
+- Do NOT include navigation chrome, breadcrumbs, footer, or cookie banner text
+- If the page has no main content text at all, set description to null
+
+### Step 4 — Extract structured fields
+
+- **title**: exact H1 heading text
+- **url**: {URL}
+- **breadcrumb**: breadcrumb trail as a JSON array of strings — OMIT "All products"
+- **last_updated**: date shown near "Last Updated" formatted as "YYYY-MM-DD", or null
+- **has_video**: true if an iframe or video element is present in the snapshot, else false
+- **video_url**: full src URL of the iframe/video if present, else null
+- **video_title**: visible video title text if present, else null
+- **notes**: full verbatim text of every "Note:", "Important:", "Warning:", or "Deprecated:" callout box, concatenated with "\n\n" between them, or null if none exist
+- **tables**: every table on the page as a JSON array:
+  ```
+  [
+    {
+      "title": "caption or nearest heading above the table, or null",
+      "headers": ["Column 1", "Column 2"],
+      "rows": [
+        { "Column 1": "value", "Column 2": "value" }
+      ]
+    }
+  ]
+  ```
+- **sections**: every H2 and H3 sub-section as a JSON array — one object per heading:
+  ```
+  [
+    {
+      "heading": "Exact heading text",
+      "body": "Complete verbatim text under this heading — all paragraphs, bullets, sub-headings, steps, notes"
+    }
+  ]
+  ```
+
+### Step 5 — Find direct child pages (stubs only)
+
+Collect child page links from BOTH sources below, then deduplicate by URL:
+
+**Source A — Left TOC sidebar:**
+Find the current page's entry in the TOC tree on the left.
+Collect every item nested exactly one level below it (direct children only, not grandchildren).
+
+**Source B — Body link list:**
+Some pages list child pages as "–" or bullet links in the body content.
+Collect every link in the main content area that navigates to a child doc page.
+IGNORE: breadcrumb links, external site links, "For more information, see..." cross-reference links.
+
+For each child collect:
+- **id**: kebab-case of the title (lowercase, spaces → hyphens, remove special chars)
+- **title**: exact link text
+- **url**: full absolute href URL
+- **description**: the blurb or summary sentence that appears next to or immediately below this link on the current page, verbatim — or null if no blurb is shown
+
+### Step 6 — Write output file
+
+Write {OUTPUT_FILE} as a single valid JSON object. No markdown code fences. No explanatory text. Just the JSON.
+
+Schema:
+{
+  "title": "Exact H1 text",
+  "url": "https://...",
+  "breadcrumb": ["IBM Maximo Manage", "Continuous Delivery", "..."],
+  "last_updated": "YYYY-MM-DD or null",
+  "description": "Complete verbatim page text in reading order — all paragraphs, headings, bullets, steps",
+  "has_video": false,
+  "video_url": null,
+  "video_title": null,
+  "notes": "Full text of all note/warning/important callouts, or null",
+  "tables": [],
+  "sections": [
+    {
+      "heading": "Features",
+      "body": "Your system administrator determines what Maximo Assistant can do.\n\nTo determine what Maximo Assistant is configured to do...\n\nMaximo Assistant might describe being able to do some or all of the following things:\n- Retrieve data.\n- Generate insights about asset condition.\n- Search IBM Documentation for information about Maximo Application Suite.\n- Analyze, summarize, or process text.\n- Use general knowledge about asset lifecycle management."
+    }
+  ],
+  "children": [
+    {
+      "id": "kebab-case-id",
+      "title": "Child page title",
+      "url": "https://full-absolute-url",
+      "description": "Blurb text shown next to this link on the current page, or null"
+    }
+  ]
+}
+
+---
+
+## ABSOLUTE RULES — READ CAREFULLY
+
+1. **description is the most important field** — it must contain the COMPLETE text of the page, word for word
+2. **Never summarise** — copy text verbatim, do not paraphrase or shorten anything
+3. **Never truncate** — if the page is long, capture all of it; there is no length limit
+4. **sections[] is required** — every H2/H3 heading must produce one entry with its full body text
+5. **children[] are stubs only** — do NOT navigate to any child page
+6. **Valid JSON only** — write only the JSON object to {OUTPUT_FILE}, nothing else
+7. **breadcrumb** must NOT include "All products"
+8. **Do not navigate** to any other page after loading {URL}
+9. **Do not ask for confirmation** — extract everything, write the file, then stop
