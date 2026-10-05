@@ -1,8 +1,8 @@
-# crawler.py — Requirements & Setup Guide
+# AI Web Crawler using IBM BOB
 
 ## Overview
 
-`crawler.py` is a web crawler orchestrator that uses **Bob CLI** in **Browser Dev mode** to crawl IBM documentation pages and extract structured JSON data into the `Database/` folder.
+`crawler.py` is a web crawler orchestrator that uses **Bob CLI** in **Browser Dev mode** to crawl product documentation pages and extract structured JSON data into the `Database/` folder.
 
 ---
 
